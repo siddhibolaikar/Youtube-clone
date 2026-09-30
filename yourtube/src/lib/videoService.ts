@@ -11,22 +11,23 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import type { Video } from "./types";
 
-export const getAllVideos = async () => {
+export const getAllVideos = async (): Promise<Video[]> => {
   const snap = await getDocs(collection(db, "videos"));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Video);
 };
 
-export const getVideoById = async (id: string) => {
+export const getVideoById = async (id: string): Promise<Video | null> => {
   const snap = await getDoc(doc(db, "videos", id));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() };
+  return { id: snap.id, ...snap.data() } as Video;
 };
 
-export const getVideosByUploader = async (uid: string) => {
+export const getVideosByUploader = async (uid: string): Promise<Video[]> => {
   const q = query(collection(db, "videos"), where("uploader", "==", uid));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Video);
 };
 
 const uploadToCloudinary = (

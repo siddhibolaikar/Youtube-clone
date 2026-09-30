@@ -1,0 +1,10 @@
+# Uploaded by `vercel deploy`: source only. Env comes from the Vercel project.
+**/node_modules
+**/.next
+**/.env*
+!**/.env.example
+**/test-results
+**/playwright-report
+**/*.log
+.claude
+.firebaserc

@@ -1,8 +1,14 @@
 import React, { useState } from "react";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { Button } from "./ui/button";
+import type { AppUser, Channel } from "@/lib/types";
 
-const ChannelHeader = ({ channel, user }: any) => {
+interface ChannelHeaderProps {
+  channel: Channel;
+  user: AppUser | null;
+}
+
+const ChannelHeader = ({ channel, user }: ChannelHeaderProps) => {
   const [isSubscribed, setIsSubscribed] = useState(false);
 
   return (
@@ -21,13 +27,13 @@ const ChannelHeader = ({ channel, user }: any) => {
             <h1 className="text-2xl md:text-4xl font-bold">
               {channel?.channelname}
             </h1>
-            <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
               <span>
                 @{channel?.channelname?.toLowerCase().replace(/\s+/g, "")}
               </span>
             </div>
             {channel?.description && (
-              <p className="text-sm text-gray-700 max-w-2xl">
+              <p className="text-sm text-muted-foreground max-w-2xl">
                 {channel?.description}
               </p>
             )}
@@ -39,7 +45,7 @@ const ChannelHeader = ({ channel, user }: any) => {
                 onClick={() => setIsSubscribed(!isSubscribed)}
                 variant={isSubscribed ? "outline" : "default"}
                 className={
-                  isSubscribed ? "bg-gray-100" : "bg-red-600 hover:bg-red-700"
+                  isSubscribed ? "bg-secondary" : "bg-red-600 hover:bg-red-700 text-white"
                 }
               >
                 {isSubscribed ? "Subscribed" : "Subscribe"}

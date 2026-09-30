@@ -5,12 +5,13 @@ import Videopplayer from "@/components/Videopplayer";
 import { getAllVideos, getVideoById } from "@/lib/videoService";
 import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
+import type { Video } from "@/lib/types";
 
 const WatchPage = () => {
   const router = useRouter();
   const { id } = router.query;
-  const [video, setvideo] = useState<any>(null);
-  const [allVideos, setAllVideos] = useState<any[]>([]);
+  const [video, setvideo] = useState<Video | null>(null);
+  const [allVideos, setAllVideos] = useState<Video[]>([]);
   const [loading, setloading] = useState(true);
 
   useEffect(() => {
@@ -22,7 +23,7 @@ const WatchPage = () => {
           getAllVideos(),
         ]);
         setvideo(v);
-        setAllVideos(all.filter((vid: any) => vid.id !== id));
+        setAllVideos(all.filter((vid) => vid.id !== id));
       } catch (error) {
         console.log(error);
       } finally {
@@ -41,11 +42,11 @@ const WatchPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="flex-1 min-w-0 min-h-screen">
       <div className="max-w-7xl mx-auto p-4">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
-            <Videopplayer video={video} />
+            <Videopplayer video={video} relatedVideos={allVideos} />
             <VideoInfo video={video} />
             <Comments videoId={id as string} />
           </div>

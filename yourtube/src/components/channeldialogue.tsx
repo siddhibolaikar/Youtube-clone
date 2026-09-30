@@ -13,8 +13,17 @@ import { Textarea } from "./ui/textarea";
 import { Button } from "./ui/button";
 import { updateUser } from "@/lib/userService";
 import { useUser } from "@/lib/AuthContext";
+import type { Channel } from "@/lib/types";
+import { toast } from "sonner";
 
-const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
+interface ChanneldialogueProps {
+  isopen: boolean;
+  onclose: () => void;
+  channeldata?: Channel | null;
+  mode: "create" | "edit";
+}
+
+const Channeldialogue = ({ isopen, onclose, channeldata, mode }: ChanneldialogueProps) => {
   const { user, login } = useUser();
   const router = useRouter();
   const [formData, setFormData] = useState({
@@ -26,7 +35,7 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
   useEffect(() => {
     if (channeldata && mode === "edit") {
       setFormData({
-        name: channeldata.name || "",
+        name: channeldata.channelname || "",
         description: channeldata.description || "",
       });
     } else {
@@ -35,7 +44,7 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
         description: "",
       });
     }
-  }, [channeldata]);
+  }, [channeldata, mode, user?.name]);
 
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -48,16 +57,20 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
     e.preventDefault();
     setisSubmitting(true);
     try {
+      if (!user) return;
       const updated = await updateUser(user.uid, {
         channelname: formData.name,
         description: formData.description,
+        name: user.name || "",
+        image: user.image || "",
       });
       login(updated);
-      router.push(`/channel/${user?.uid}`);
+      router.push(`/channel/${user.uid}`);
       setFormData({ name: "", description: "" });
       onclose();
     } catch (error) {
       console.error(error);
+      toast.error("Could not save your channel. Please try again.");
     } finally {
       setisSubmitting(false);
     }

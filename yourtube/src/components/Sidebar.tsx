@@ -6,19 +6,46 @@ import {
   ThumbsUp,
   History,
   User,
+  Download,
+  Gem,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { Button } from "./ui/button";
 import Channeldialogue from "./channeldialogue";
 import { useUser } from "@/lib/AuthContext";
+import { TOGGLE_SIDEBAR_EVENT } from "@/lib/uiEvents";
 
 const Sidebar = () => {
   const { user } = useUser();
 
   const [isdialogeopen, setisdialogeopen] = useState(false);
+  // Below md the sidebar is a drawer opened from the header's menu button.
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const toggle = () => setMobileOpen((o) => !o);
+    const close = () => setMobileOpen(false);
+    window.addEventListener(TOGGLE_SIDEBAR_EVENT, toggle);
+    router.events.on("routeChangeStart", close);
+    return () => {
+      window.removeEventListener(TOGGLE_SIDEBAR_EVENT, toggle);
+      router.events.off("routeChangeStart", close);
+    };
+  }, [router.events]);
+
   return (
-    <aside className="w-64 bg-white  border-r min-h-screen p-2">
+    <>
+    {mobileOpen && <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setMobileOpen(false)} />}
+    <aside
+      className={`${
+        mobileOpen ? "fixed inset-y-0 left-0 z-50 block overflow-y-auto shadow-xl" : "hidden"
+      } md:static md:z-auto md:block md:shadow-none w-64 shrink-0 bg-background border-r min-h-screen p-2`}
+      data-testid="sidebar"
+    >
       <nav className="space-y-1">
         <Link href="/">
           <Button variant="ghost" className="w-full justify-start">
@@ -60,8 +87,26 @@ const Sidebar = () => {
                   Watch later
                 </Button>
               </Link>
+              <Link href="/call">
+                <Button variant="ghost" className="w-full justify-start">
+                  <Users className="w-5 h-5 mr-3" />
+                  Friends &amp; calls
+                </Button>
+              </Link>
+              <Link href="/plans">
+                <Button variant="ghost" className="w-full justify-start">
+                  <Gem className="w-5 h-5 mr-3" />
+                  Plans
+                </Button>
+              </Link>
+              <Link href="/downloads">
+                <Button variant="ghost" className="w-full justify-start">
+                  <Download className="w-5 h-5 mr-3" />
+                  Downloads
+                </Button>
+              </Link>
               {user?.channelname ? (
-                <Link href={`/channel/${user.id}`}>
+                <Link href={`/channel/${user.uid}`}>
                   <Button variant="ghost" className="w-full justify-start">
                     <User className="w-5 h-5 mr-3" />
                     Your channel
@@ -89,6 +134,7 @@ const Sidebar = () => {
         mode="create"
       />
     </aside>
+    </>
   );
 };
 

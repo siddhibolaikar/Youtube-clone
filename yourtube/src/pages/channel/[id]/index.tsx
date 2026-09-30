@@ -4,26 +4,27 @@ import ChannelVideos from "@/components/ChannelVideos";
 import VideoUploader from "@/components/VideoUploader";
 import { useUser } from "@/lib/AuthContext";
 import { getVideosByUploader } from "@/lib/videoService";
-import { getUserById } from "@/lib/userService";
+import { getChannelById } from "@/lib/userService";
+import type { Channel, Video } from "@/lib/types";
 import { useRouter } from "next/router";
+import Link from "next/link";
+import { Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import React, { useEffect, useState } from "react";
 
 const ChannelPage = () => {
   const router = useRouter();
   const { id } = router.query;
   const { user } = useUser();
-  const [channel, setChannel] = useState<any>(null);
-  const [videos, setVideos] = useState<any[]>([]);
+  const [channel, setChannel] = useState<Channel | null>(null);
+  const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!id || typeof id !== "string") return;
       try {
-        const [channelData, channelVideos] = await Promise.all([
-          getUserById(id),
-          getVideosByUploader(id),
-        ]);
+        const [channelData, channelVideos] = await Promise.all([getChannelById(id), getVideosByUploader(id)]);
         setChannel(channelData);
         setVideos(channelVideos);
       } catch (error) {
@@ -35,27 +36,40 @@ const ChannelPage = () => {
     fetchData();
   }, [id]);
 
+  const isOwner = !!user && user.uid === id;
+  // The public channel card is created on first OTP-verified login; until
+  // then the owner still sees their own channel from their profile.
+  const shown: Channel | null =
+    channel ??
+    (isOwner && user.channelname
+      ? { uid: user.uid, channelname: user.channelname, description: user.description, name: user.name, image: user.image }
+      : null);
+
   if (loading) {
-    return <div>Loading...</div>;
+    return <div className="flex-1 p-4">Loading...</div>;
   }
 
-  if (!channel) {
-    return <div>Channel not found</div>;
+  if (!shown) {
+    return <div className="flex-1 p-4">Channel not found</div>;
   }
-
-  const isOwner = user?.uid === id;
 
   return (
-    <div className="flex-1 min-h-screen bg-white">
+    <div className="flex-1 min-h-screen">
       <div className="max-w-full mx-auto">
-        <ChannelHeader channel={channel} user={user} />
+        <ChannelHeader channel={shown} user={user} />
         <Channeltabs />
         {isOwner && (
+          <div className="px-4 pb-4">
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/downloads">
+                <Download className="w-4 h-4" /> Your downloads
+              </Link>
+            </Button>
+          </div>
+        )}
+        {isOwner && (
           <div className="px-4 pb-8">
-            <VideoUploader
-              channelId={user?.uid}
-              channelName={channel?.channelname}
-            />
+            <VideoUploader channelId={user.uid} channelName={shown.channelname} />
           </div>
         )}
         <div className="px-4 pb-8">

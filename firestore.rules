@@ -1,0 +1,161 @@
+rules_version = '2';
+
+// Anything that controls money, limits or moderation (plan, premium, downloads,
+// comments and their reactions, payments, OTP state, friendships) is written
+// only by the Next.js API routes via the Admin SDK, which bypasses these rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // Second factor: the server writes sessions/{uid}.authTime after a
+    // successful OTP; it must match this Google sign-in's auth_time.
+    function otpOk() {
+      let path = /databases/$(database)/documents/sessions/$(request.auth.uid);
+      return signedIn() && exists(path) && get(path).data.authTime == request.auth.token.auth_time;
+    }
+
+    function onlyKeys(keys) {
+      return request.resource.data.keys().hasOnly(keys);
+    }
+
+    function changedOnly(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // Private profile: email, phone, plan, premium flag. Owner-read only.
+    match /users/{uid} {
+      allow read: if isUser(uid);
+      allow create: if isUser(uid)
+        && onlyKeys(['email', 'name', 'channelname', 'description', 'image', 'joinedon'])
+        && request.resource.data.email == request.auth.token.email;
+      // plan, planExpiry, isPremium, phone, downloads* are server-only.
+      allow update: if isUser(uid) && otpOk()
+        && changedOnly(['name', 'channelname', 'description', 'image']);
+      allow delete: if false;
+
+      match /downloads/{downloadId} {
+        allow read: if isUser(uid);
+        allow write: if false;
+      }
+
+      // Per-IST-day download counter, bumped transactionally by /api/downloads.
+      match /downloadDays/{day} {
+        allow read, write: if false;
+      }
+
+      match /friends/{friendUid} {
+        allow read: if isUser(uid);
+        allow write: if false;
+      }
+    }
+
+    // Public channel card (what channel pages and comments display).
+    match /channels/{uid} {
+      allow read: if true;
+      allow create, update: if isUser(uid) && otpOk()
+        && onlyKeys(['channelname', 'description', 'image', 'name']);
+      allow delete: if false;
+    }
+
+    match /videos/{videoId} {
+      allow read: if true;
+      allow create: if signedIn() && otpOk()
+        && request.resource.data.uploader == request.auth.uid
+        && request.resource.data.likes == 0
+        && request.resource.data.views == 0;
+      // Viewers may bump views by exactly one; likes move by exactly one
+      // alongside a matching likes/{id} doc written by the same user.
+      allow update: if (changedOnly(['views']) && request.resource.data.views == resource.data.views + 1)
+        || (signedIn() && otpOk() && changedOnly(['likes'])
+            && (request.resource.data.likes == resource.data.likes + 1
+                || request.resource.data.likes == resource.data.likes - 1));
+      allow delete: if isUser(resource.data.uploader) && otpOk();
+    }
+
+    // Comments: public read, all writes through /api/comments.
+    match /comments/{commentId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Per-user lists keyed by a `viewer` field.
+    match /likes/{id} {
+      allow read: if signedIn() && resource.data.viewer == request.auth.uid;
+      allow create: if otpOk() && request.resource.data.viewer == request.auth.uid;
+      allow delete: if signedIn() && resource.data.viewer == request.auth.uid;
+      allow update: if false;
+    }
+    match /history/{id} {
+      allow read: if signedIn() && resource.data.viewer == request.auth.uid;
+      allow create: if otpOk() && request.resource.data.viewer == request.auth.uid;
+      allow delete: if signedIn() && resource.data.viewer == request.auth.uid;
+      allow update: if false;
+    }
+    match /watchlater/{id} {
+      allow read: if signedIn() && resource.data.viewer == request.auth.uid;
+      allow create: if otpOk() && request.resource.data.viewer == request.auth.uid;
+      allow delete: if signedIn() && resource.data.viewer == request.auth.uid;
+      allow update: if false;
+    }
+
+    match /payments/{paymentId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /orders/{orderId} {
+      allow read, write: if false;
+    }
+
+    match /otps/{uid} {
+      allow read, write: if false;
+    }
+
+    match /sessions/{uid} {
+      allow read: if isUser(uid);
+      allow write: if false;
+    }
+
+    // Online indicator: a heartbeat timestamp only.
+    match /presence/{uid} {
+      allow read: if signedIn();
+      allow write: if isUser(uid) && onlyKeys(['lastSeen']);
+    }
+
+    // WebRTC signalling. Only the two participants can see or touch a call,
+    // and you can only ring an accepted friend.
+    match /calls/{callId} {
+      function participant(data) {
+        return signedIn() && (request.auth.uid == data.callerUid || request.auth.uid == data.calleeUid);
+      }
+      function isFriend(otherUid) {
+        let path = /databases/$(database)/documents/users/$(request.auth.uid)/friends/$(otherUid);
+        return exists(path) && get(path).data.status == 'accepted';
+      }
+
+      allow read: if participant(resource.data);
+      allow create: if otpOk()
+        && request.resource.data.callerUid == request.auth.uid
+        && isFriend(request.resource.data.calleeUid);
+      allow update: if participant(resource.data)
+        && request.resource.data.callerUid == resource.data.callerUid
+        && request.resource.data.calleeUid == resource.data.calleeUid;
+      allow delete: if participant(resource.data);
+
+      match /{candidates}/{candidateId} {
+        function call() {
+          return get(/databases/$(database)/documents/calls/$(callId)).data;
+        }
+        allow read, write: if (candidates == 'callerCandidates' || candidates == 'calleeCandidates')
+          && participant(call());
+      }
+    }
+  }
+}
