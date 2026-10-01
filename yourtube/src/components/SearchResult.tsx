@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import VideoThumbnail from "@/components/VideoThumbnail";
 import { getAllVideos } from "@/lib/videoService";
 import { toDate, type Video } from "@/lib/types";
 
@@ -61,11 +62,7 @@ const SearchResult = ({ query }: { query: string }) => {
             <div key={video.id} className="flex flex-col sm:flex-row gap-4 group">
               <Link href={`/watch/${video.id}`} className="flex-shrink-0">
                 <div className="relative w-full sm:w-80 aspect-video bg-muted rounded-lg overflow-hidden">
-                  <video
-                    src={video.videoUrl}
-                    preload="metadata"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                  />
+                  <VideoThumbnail video={video} className="group-hover:scale-105 transition-transform duration-200" />
                 </div>
               </Link>
 

@@ -1,6 +1,6 @@
 // Geo/time overrides for demos and QA, e.g. ?testRegion=KL&testHour=11.
 // Only honoured when NEXT_PUBLIC_ENABLE_TEST_OVERRIDES=true, on both the
-// client (theme) and the server (/api/geo, OTP channel, comment city).
+// client (theme) and the server (/api/geo, comment city).
 
 export const TEST_OVERRIDES_ENABLED = process.env.NEXT_PUBLIC_ENABLE_TEST_OVERRIDES === "true";
 

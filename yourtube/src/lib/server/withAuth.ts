@@ -1,18 +1,10 @@
 import type { NextApiRequest } from "next";
 import type { DecodedIdToken } from "firebase-admin/auth";
-import { adminAuth, adminDb } from "./firebaseAdmin";
+import { adminAuth } from "./firebaseAdmin";
 import { HttpError, withApi, type ApiHandler } from "./http";
 
 export interface AuthedRequest extends NextApiRequest {
   user: DecodedIdToken;
-}
-
-interface AuthOptions {
-  /**
-   * Require the second-factor OTP for this sign-in session. Defaults to true;
-   * only the OTP endpoints themselves (and profile phone setup) opt out.
-   */
-  requireOtp?: boolean;
 }
 
 export async function verifyRequest(req: NextApiRequest): Promise<DecodedIdToken> {
@@ -26,26 +18,9 @@ export async function verifyRequest(req: NextApiRequest): Promise<DecodedIdToken
   }
 }
 
-/**
- * The OTP step is tied to a specific Google sign-in via the ID token's
- * auth_time claim. A fresh sign-in gets a new auth_time, so it needs a new OTP.
- */
-export async function isOtpVerified(user: DecodedIdToken): Promise<boolean> {
-  const snap = await adminDb().collection("sessions").doc(user.uid).get();
-  return snap.exists && snap.get("authTime") === user.auth_time;
-}
-
-export function withAuth(
-  methods: string[],
-  handler: ApiHandler<AuthedRequest>,
-  { requireOtp = true }: AuthOptions = {}
-) {
+export function withAuth(methods: string[], handler: ApiHandler<AuthedRequest>) {
   return withApi<NextApiRequest>(methods, async (req, res) => {
-    const user = await verifyRequest(req);
-    if (requireOtp && !(await isOtpVerified(user))) {
-      throw new HttpError(403, { error: "Verify the OTP to continue.", reason: "OTP_REQUIRED" });
-    }
-    (req as AuthedRequest).user = user;
+    (req as AuthedRequest).user = await verifyRequest(req);
     return handler(req as AuthedRequest, res);
   });
 }

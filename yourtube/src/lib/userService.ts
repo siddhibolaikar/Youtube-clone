@@ -2,7 +2,7 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firest
 import { db } from "./firebase";
 import type { AppUser, Channel } from "./types";
 
-// users/{uid} is private (email, phone, plan). channels/{uid} is the public
+// users/{uid} is private (email, plan). channels/{uid} is the public
 // card that channel pages read.
 
 export const getOrCreateUser = async (
@@ -22,6 +22,12 @@ export const getOrCreateUser = async (
       joinedon: serverTimestamp(),
     };
     await setDoc(userRef, newUser);
+    await setDoc(doc(db, "channels", uid), {
+      channelname: newUser.channelname,
+      description: newUser.description,
+      name: newUser.name,
+      image: newUser.image,
+    });
     return { uid, ...newUser, joinedon: new Date() };
   }
 

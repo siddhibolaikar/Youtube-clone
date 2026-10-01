@@ -40,14 +40,14 @@ async function waitForEmailStatus(paymentId: string, want: string) {
   throw new Error(`emailStatus never became ${want}`);
 }
 
-const CLOUD_URL = (n: number) => `https://res.cloudinary.com/demo/video/upload/v1/yourtube/clip${n}.mp4`;
+const VIDEO_URL = (n: number) => `/videos/clip${n}.mp4`;
 
 beforeAll(async () => {
   await startServer({ RAZORPAY_WEBHOOK_SECRET: WEBHOOK_SECRET, MAIL_CAPTURE_DIR: MAIL_DIR });
   const db = adminDb();
   await Promise.all(
     [1, 2, 3, 4].map((n) =>
-      db.doc(`videos/dl${n}`).set({ videotitle: `Clip ${n}`, videoUrl: CLOUD_URL(n), uploader: "x", likes: 0, views: 0 })
+      db.doc(`videos/dl${n}`).set({ videotitle: `Clip ${n}`, videoUrl: VIDEO_URL(n), poster: `/videos/clip${n}.jpg`, uploader: "x", likes: 0, views: 0 })
     )
   );
 });
@@ -61,9 +61,7 @@ describe("downloads", () => {
     const u = await createUser("free");
     const first = await download(u, "dl1");
     expect(first.status).toBe(200);
-    expect(first.body.url).toBe(
-      "https://res.cloudinary.com/demo/video/upload/fl_attachment:Clip_1/v1/yourtube/clip1.mp4"
-    );
+    expect(first.body.url).toBe("/videos/clip1.mp4");
     expect(first.body.quota).toMatchObject({ usedToday: 1, remaining: 0, limit: 1 });
 
     expect((await download(u, "dl1")).status).toBe(200);
@@ -77,7 +75,7 @@ describe("downloads", () => {
     expect((list.body.downloads as Array<Record<string, unknown>>)[0]).toMatchObject({
       videoId: "dl1",
       videotitle: "Clip 1",
-      thumbnail: "https://res.cloudinary.com/demo/video/upload/so_1,w_480,c_limit/v1/yourtube/clip1.jpg",
+      thumbnail: "/videos/clip1.jpg",
     });
   });
 

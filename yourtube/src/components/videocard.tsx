@@ -1,29 +1,17 @@
 "use client";
-import { useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { toDate, type Video } from "@/lib/types";
-import { formatClock } from "@/lib/watchLimit";
+import VideoThumbnail from "./VideoThumbnail";
 
 export default function VideoCard({ video }: { video: Video }) {
   const created = toDate(video.createdAt);
-  const [duration, setDuration] = useState<number | null>(null);
   return (
     <Link href={`/watch/${video?.id}`} className="group">
       <div className="space-y-3">
         <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
-          <video
-            src={video?.videoUrl}
-            preload="metadata"
-            onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-            className="object-cover group-hover:scale-105 transition-transform duration-200"
-          />
-          {duration !== null && isFinite(duration) && (
-            <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-1 rounded">
-              {formatClock(duration)}
-            </div>
-          )}
+          <VideoThumbnail video={video} className="group-hover:scale-105 transition-transform duration-200" />
         </div>
         <div className="flex gap-3">
           <Avatar className="w-9 h-9 flex-shrink-0">

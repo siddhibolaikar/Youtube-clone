@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
+import VideoThumbnail from "./VideoThumbnail";
 import { toDate, type FirestoreDate, type Video } from "@/lib/types";
 
 interface RelatedVideosProps {
@@ -21,10 +22,7 @@ export default function RelatedVideos({ videos }: RelatedVideosProps) {
           className="flex gap-2 group"
         >
           <div className="relative w-40 aspect-video bg-muted rounded overflow-hidden flex-shrink-0">
-            <video
-              src={video.videoUrl}
-              className="object-cover group-hover:scale-105 transition-transform duration-200"
-            />
+            <VideoThumbnail video={video} className="group-hover:scale-105 transition-transform duration-200" />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="font-medium text-sm line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400">

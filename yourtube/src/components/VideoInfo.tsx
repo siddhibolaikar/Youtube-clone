@@ -14,10 +14,11 @@ import { quotaLabel, type DownloadQuota } from "@/lib/downloadQuota";
 import { toDate, type Video } from "@/lib/types";
 import PremiumDialog from "./PremiumDialog";
 
-/** Navigating to an attachment URL downloads it without leaving the page. */
+/** Same-origin file + the download attribute saves it without leaving the page. */
 function triggerDownload(url: string) {
   const a = document.createElement("a");
   a.href = url;
+  a.download = "";
   a.rel = "noopener";
   document.body.appendChild(a);
   a.click();

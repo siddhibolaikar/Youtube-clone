@@ -1,5 +1,4 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { cloudinaryAttachmentUrl, cloudinaryThumbnailUrl } from "@/lib/cloudinary";
 import { computeQuota, downloadDayKey } from "@/lib/downloadQuota";
 import { FREE_DAILY_DOWNLOADS } from "@/lib/plans";
 import { adminDb } from "@/lib/server/firebaseAdmin";
@@ -78,11 +77,11 @@ export default withAuth(["GET", "POST"], async (req, res) => {
       videoId,
       videotitle,
       videoUrl,
-      thumbnail: cloudinaryThumbnailUrl(videoUrl),
+      thumbnail: video.get("poster") ?? null,
       downloadedAt: Timestamp.fromDate(now),
     });
     return computeQuota(isPremium, used + 1, now);
   });
 
-  res.status(200).json({ url: cloudinaryAttachmentUrl(videoUrl, videotitle), quota });
+  res.status(200).json({ url: videoUrl, quota });
 });

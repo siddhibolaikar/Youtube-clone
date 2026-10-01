@@ -12,7 +12,8 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-yourtube 'vitest run -c vitest.rules.config.mts'",
     "test:api": "firebase emulators:exec --only auth,firestore --project demo-yourtube 'vitest run -c vitest.api.config.mts'",
     "test:e2e": "firebase emulators:exec --only auth,firestore --project demo-yourtube 'playwright test -c playwright.emulator.config.ts'",
-    "test:smoke": "playwright test -c playwright.config.ts"
+    "test:smoke": "playwright test -c playwright.config.ts",
+    "seed:samples": "npx -y tsx --env-file=.env.local scripts/seed-samples.mts"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.10",

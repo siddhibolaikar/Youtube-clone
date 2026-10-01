@@ -1,24 +1,18 @@
-import { onAuthStateChanged, signInWithRedirect, getRedirectResult, signOut, type User } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { onAuthStateChanged, signInWithRedirect, getRedirectResult, signOut } from "firebase/auth";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { provider, auth, db } from "./firebase";
+import { provider, auth } from "./firebase";
 import { getOrCreateUser, getOwnProfile } from "./userService";
 import type { AppUser } from "./types";
 
 interface UserContextValue {
-  /** Signed in AND past the OTP step for this sign-in. */
   user: AppUser | null;
-  /** Signed in with Google but still needs the OTP; not treated as logged in. */
-  pendingUser: AppUser | null;
   /** True once the first auth state has been resolved. */
   ready: boolean;
   login: (profile: AppUser) => void;
   logout: () => Promise<void>;
   handlegooglesignin: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  /** Call after /api/otp/verify succeeds. */
-  completeOtp: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextValue | null>(null);
@@ -36,28 +30,14 @@ function reportSignInError(err: unknown) {
   }
 }
 
-/** Has the server recorded an OTP for this exact Google sign-in? */
-async function otpVerifiedFor(firebaseUser: User): Promise<boolean> {
-  const [token, session] = await Promise.all([
-    firebaseUser.getIdTokenResult(),
-    getDoc(doc(db, "sessions", firebaseUser.uid)),
-  ]);
-  return session.exists() && session.get("authTime") === Number(token.claims.auth_time);
-}
-
 export const UserProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AppUser | null>(null);
-  const [pendingUser, setPendingUser] = useState<AppUser | null>(null);
   const [ready, setReady] = useState(false);
 
-  const login = useCallback((profile: AppUser) => {
-    setUser(profile);
-    setPendingUser(null);
-  }, []);
+  const login = useCallback((profile: AppUser) => setUser(profile), []);
 
   const logout = useCallback(async () => {
     setUser(null);
-    setPendingUser(null);
     try {
       await signOut(auth);
     } catch (error) {
@@ -73,22 +53,13 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // Re-read the private profile (plan, isPremium, phone) after a server-side change.
+  // Re-read the private profile (plan, isPremium) after a server-side change.
   const refreshUser = useCallback(async () => {
     const current = auth.currentUser;
     if (!current) return;
     const profile = await getOwnProfile(current.uid);
-    if (!profile) return;
-    if (user) setUser(profile);
-    else setPendingUser(profile);
-  }, [user]);
-
-  const completeOtp = useCallback(async () => {
-    const current = auth.currentUser;
-    if (!current) return;
-    const profile = await getOwnProfile(current.uid);
-    if (profile && (await otpVerifiedFor(current))) login(profile);
-  }, [login]);
+    if (profile) setUser(profile);
+  }, []);
 
   useEffect(() => {
     // Surface redirect errors (e.g. unauthorized domain); onAuthStateChanged
@@ -99,7 +70,6 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       try {
         if (!firebaseUser) {
           setUser(null);
-          setPendingUser(null);
           return;
         }
         const profile = await getOrCreateUser(firebaseUser.uid, {
@@ -107,17 +77,10 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
           name: firebaseUser.displayName,
           image: firebaseUser.photoURL || "https://github.com/shadcn.png",
         });
-        if (await otpVerifiedFor(firebaseUser)) {
-          setUser(profile);
-          setPendingUser(null);
-        } else {
-          setUser(null);
-          setPendingUser(profile);
-        }
+        setUser(profile);
       } catch (error) {
         console.error("Could not load your account:", error);
         setUser(null);
-        setPendingUser(null);
         await signOut(auth).catch(() => {});
       } finally {
         setReady(true);
@@ -126,9 +89,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   return (
-    <UserContext.Provider
-      value={{ user, pendingUser, ready, login, logout, handlegooglesignin, refreshUser, completeOtp }}
-    >
+    <UserContext.Provider value={{ user, ready, login, logout, handlegooglesignin, refreshUser }}>
       {children}
     </UserContext.Provider>
   );

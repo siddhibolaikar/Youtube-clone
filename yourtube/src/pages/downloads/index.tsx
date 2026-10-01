@@ -81,11 +81,9 @@ export default function DownloadsPage() {
           {downloads.map((d) => (
             <li key={d.id} className="flex gap-4 items-center rounded-lg border p-2">
               <div className="w-40 aspect-video rounded overflow-hidden bg-muted shrink-0">
-                {d.thumbnail ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- Cloudinary-transformed URL
+                {d.thumbnail && (
+                  // eslint-disable-next-line @next/next/no-img-element -- small static poster
                   <img src={d.thumbnail} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <video src={d.videoUrl} className="w-full h-full object-cover" preload="metadata" />
                 )}
               </div>
               <div className="flex-1 min-w-0">

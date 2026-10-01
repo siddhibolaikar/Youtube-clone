@@ -1,17 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { adminDb, api, createUser, startServer, stopServer, type TestUser } from "./harness";
 
-let alice: TestUser, bob: TestUser, carol: TestUser, noOtp: TestUser;
+let alice: TestUser, bob: TestUser, carol: TestUser;
 const videoId = "video-phase1";
 
 beforeAll(async () => {
   await startServer();
-  [alice, bob, carol, noOtp] = await Promise.all([
-    createUser("alice"),
-    createUser("bob"),
-    createUser("carol"),
-    createUser("dave", { otp: false }),
-  ]);
+  [alice, bob, carol] = await Promise.all([createUser("alice"), createUser("bob"), createUser("carol")]);
   await adminDb().doc(`videos/${videoId}`).set({ videotitle: "Test", uploader: alice.uid, likes: 0, views: 0 });
 });
 
@@ -31,12 +26,6 @@ describe("POST /api/comments", () => {
   it("rejects anonymous callers", async () => {
     const r = await api("/api/comments", { method: "POST", body: { videoId, text: "hi" } });
     expect(r.status).toBe(401);
-  });
-
-  it("rejects users who have not completed OTP for this sign-in", async () => {
-    const r = await post(noOtp, "hello");
-    expect(r.status).toBe(403);
-    expect(r.body.reason).toBe("OTP_REQUIRED");
   });
 
   it("stores a Hindi comment with the server-resolved city", async () => {

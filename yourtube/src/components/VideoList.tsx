@@ -3,6 +3,7 @@ import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { MoreVertical, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import VideoThumbnail from "@/components/VideoThumbnail";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -82,11 +83,7 @@ export default function VideoList({ icon: Icon, load, remove, signedOut, empty, 
           <div key={item.id} className="flex gap-4 group">
             <Link href={`/watch/${item.videoid.id}`} className="flex-shrink-0">
               <div className="relative w-40 aspect-video bg-muted rounded overflow-hidden">
-                <video
-                  src={item.videoid.videoUrl}
-                  preload="metadata"
-                  className="object-cover group-hover:scale-105 transition-transform duration-200"
-                />
+                <VideoThumbnail video={item.videoid} className="group-hover:scale-105 transition-transform duration-200" />
               </div>
             </Link>
             <div className="flex-1 min-w-0">

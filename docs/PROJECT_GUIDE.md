@@ -16,7 +16,7 @@ This guide explains how the whole project works: what each feature does, how the
 6. [Security model](#6-security-model)
 7. [Cross-cutting building blocks](#7-cross-cutting-building-blocks)
 8. [Features in depth](#8-features-in-depth)
-   - [8.1 Sign-in and the OTP step](#81-sign-in-and-the-otp-step)
+   - [8.1 Sign-in](#81-sign-in)
    - [8.2 Theme by time and location](#82-theme-by-time-and-location)
    - [8.3 Comments](#83-comments)
    - [8.4 Downloads and Premium](#84-downloads-and-premium)
@@ -47,7 +47,7 @@ On top of the basic clone, six features were built:
 | 1 | **Comments** | Special-character filter, commenter's city, like/dislike with auto-removal at 2 dislikes, translation into 15 languages |
 | 2 | **Downloads** | 1 free download per IST day; ₹99 Premium for unlimited; a Downloads page |
 | 3 | **Plans** | Free/Bronze/Silver/Gold per-video watch limits, paid via Razorpay, with emailed PDF invoices |
-| 4 | **Theme + OTP** | Light theme only 10:00–12:00 IST in five southern states; a second sign-in step by email (south) or SMS (elsewhere) |
+| 4 | **Theme** | Light theme only 10:00–12:00 IST in five southern states (the OTP sign-in step was later removed; see [§8.1](#81-sign-in)) |
 | 5 | **Gesture player** | Custom player with tap zones: double-tap to seek, triple-tap for next video / comments / close |
 | 6 | **Calls** | Friends list, peer-to-peer video calls, screen share, and recording saved to your device |
 
@@ -59,14 +59,14 @@ On top of the basic clone, six features were built:
 |---|---|---|
 | Framework | **Next.js 15 (Pages Router)**, React 19, TypeScript | Pages and API routes in one app, deployed as serverless functions |
 | UI | Tailwind CSS v4, shadcn/ui (Radix), lucide icons, `sonner` toasts, `next-themes` | Consistent components with light/dark theme tokens |
-| Auth | **Firebase Authentication** (Google sign-in, Phone Auth for SMS codes) | Hosted identity with ID tokens the server can verify |
+| Auth | **Firebase Authentication** (Google sign-in) | Hosted identity with ID tokens the server can verify |
 | Database | **Cloud Firestore** + security rules | Real-time listeners (comments, friends, calls) and per-document rules |
 | Server | Next.js API routes + **Firebase Admin SDK** (13.x) | Trusted code for money, limits and moderation |
 | Video storage | **Cloudinary** (unsigned upload preset) | Direct browser upload, CDN delivery, URL transforms for downloads/thumbnails |
 | Payments | **Razorpay** (test mode) | Indian payments (cards, UPI) with order + signature verification |
 | Email | **Nodemailer** + Gmail SMTP (App Password), **pdfkit** for invoices | No paid provider needed |
 | Translation | **MyMemory** API | Free, no key required |
-| Location | Vercel IP headers, **ipapi.co** fallback | Region decides theme and OTP channel |
+| Location | Vercel IP headers, **ipapi.co** fallback | Region decides theme and comment city |
 | Calls | **WebRTC**, Firestore for signalling, Metered **TURN** | Peer-to-peer media; no websocket server needed |
 | Hosting | **Vercel** | Native Next.js hosting, IP geolocation headers, `waitUntil` |
 | Tests | **Vitest**, Firebase **emulators**, `@firebase/rules-unit-testing`, **Playwright** | Unit, rules, API, multi-user browser and smoke tests |
@@ -84,12 +84,12 @@ flowchart LR
   end
 
   subgraph Vercel["Vercel: Next.js API routes"]
-    AUTH[withAuth: ID token + OTP session]
-    API[/comments · downloads · payments · otp · friends · translate · geo/]
+    AUTH[withAuth: Firebase ID token]
+    API[/comments · downloads · payments · friends · translate · geo/]
   end
 
   subgraph Firebase
-    FA[Auth: Google + Phone]
+    FA[Auth: Google]
     FS[(Firestore + rules)]
   end
 
@@ -99,7 +99,7 @@ flowchart LR
   API -- Admin SDK --> FS
   API -- orders, verify --> RZP[Razorpay]
   RZP -- webhook --> API
-  API -- invoices, OTP email --> SMTP[Gmail SMTP]
+  API -- invoices --> SMTP[Gmail SMTP]
   API --> MM[MyMemory]
   API --> IPAPI[ipapi.co]
   UI -- upload, stream --> CL[Cloudinary]
@@ -114,7 +114,6 @@ The browser talks to Firestore directly for **public reads** (videos, comments, 
 - plan, Premium flag, payments and invoices
 - download quota
 - comments (text validation, city, reactions, removal at 2 dislikes)
-- OTP codes and the verified-session marker
 - friendships (two-sided writes)
 
 The API routes use the **Firebase Admin SDK**, which bypasses the security rules, and the rules forbid the browser from writing those same fields. So a user editing requests in DevTools can't grant themselves Gold, reset their download count or resurrect a removed comment.
@@ -125,7 +124,6 @@ The API routes use the **Firebase Admin SDK**, which bypasses the security rules
 2. The route is wrapped in `withAuth([...methods], handler)` (`src/lib/server/withAuth.ts`):
    - rejects the wrong HTTP method with **405**
    - verifies the ID token with `adminAuth().verifyIdToken` → **401** if missing/invalid
-   - checks the OTP session (see [§6](#6-security-model)) → **403 `OTP_REQUIRED`** unless the route opts out
 3. The handler runs. Throwing `HttpError(status, body)` sends that JSON; any other error becomes a logged **500** with a generic message.
 
 ---
@@ -147,11 +145,11 @@ The API routes use the **Firebase Admin SDK**, which bypasses the security rules
     ├── src/
     │   ├── pages/                routes (index, watch/[id], channel/[id], plans, downloads, call, …)
     │   ├── pages/api/            server routes (see §9)
-    │   ├── components/           UI: player, comments, OTP gate, dialogs, call room, …
+    │   ├── components/           UI: player, comments, dialogs, call room, …
     │   ├── components/ui/        shadcn/ui primitives
     │   ├── components/call/      FriendsPanel, CallRoom, IncomingCallListener, PresenceHeartbeat
     │   ├── lib/                  browser services + pure logic (shared with the server where safe)
-    │   ├── lib/server/           server-only: Admin SDK, withAuth, geo, payments, mailer, invoice, OTP
+    │   ├── lib/server/           server-only: Admin SDK, withAuth, geo, payments, mailer, invoice
     │   └── styles/globals.css    theme tokens (light/dark), player animations
     ├── tests/rules/              Firestore rules tests
     ├── tests/api/                API tests over HTTP against the emulators
@@ -172,7 +170,6 @@ The API routes use the **Firebase Admin SDK**, which bypasses the security rules
 | `lib/watchLimit.ts` | Playback budget accounting, seek clamping |
 | `lib/theme.ts` | The light/dark rule |
 | `lib/regions.ts` | Indian state codes, southern-state check |
-| `lib/otpRules.ts` | OTP rate limits, Indian mobile validation, masking |
 | `lib/gestures.ts` | Tap zones, `resolveGesture`, the 300 ms tap resolver |
 | `lib/callRecorder.ts` | Recording filename, MIME selection (plus the recorder itself) |
 | `lib/server/razorpay.ts` | Payment and webhook signature checks |
@@ -185,23 +182,21 @@ The API routes use the **Firebase Admin SDK**, which bypasses the security rules
 
 | Path | Written by | Read by | Fields |
 |---|---|---|---|
-| `users/{uid}` | browser (profile fields only), server | owner only | `email, name, channelname, description, image, joinedon`; server-only: `phone, plan, planUpdatedAt, isPremium, premiumSince` |
+| `users/{uid}` | browser (profile fields only), server | owner only | `email, name, channelname, description, image, joinedon`; server-only: `plan, planUpdatedAt, isPremium, premiumSince` |
 | `users/{uid}/downloads/{id}` | server | owner | `videoId, videotitle, videoUrl, thumbnail, downloadedAt` |
 | `users/{uid}/downloadDays/{YYYYMMDD}` | server | nobody | `count, day`: the per-IST-day download counter |
 | `users/{uid}/friends/{friendUid}` | server | owner | `status: incoming\|outgoing\|accepted, name, email, image, since` |
-| `channels/{uid}` | owner (after OTP), server | everyone | `channelname, description, name, image`: public channel card |
-| `videos/{id}` | uploader (after OTP) | everyone | `videotitle, filename, filetype, videoUrl, filesize, videochanel, likes, views, uploader, createdAt` |
+| `channels/{uid}` | owner, server | everyone | `channelname, description, name, image`: public channel card |
+| `videos/{id}` | uploader | everyone | `videotitle, filename, filetype, videoUrl, filesize, videochanel, likes, views, uploader, createdAt` |
 | `comments/{id}` | server | everyone | `videoid, userid, commentbody, usercommented, userimage, city, likes[], dislikes[], edited, commentedon` |
-| `likes/{id}`, `history/{id}`, `watchlater/{id}` | owner (after OTP) | owner | `viewer, videoid, likedon/timestamp` |
+| `likes/{id}`, `history/{id}`, `watchlater/{id}` | owner | owner | `viewer, videoid, likedon/timestamp` |
 | `orders/{razorpayOrderId}` | server | nobody | `uid, product, amount, currency, status, createdAt, paymentId` |
 | `payments/{razorpayPaymentId}` | server | owner | `uid, orderId, paymentId, product, productName, amount, currency, invoiceNumber, source, emailStatus, emailError, testMode, createdAt` |
-| `otps/{uid}` | server | nobody | `channel, codeHash, salt, expiresAt, attempts, authTime, sendLog[]` |
-| `sessions/{uid}` | server | owner | `authTime, channel, verifiedAt`: marks a sign-in as OTP-verified |
 | `presence/{uid}` | owner | signed-in users | `lastSeen` |
 | `calls/{id}` | participants | participants | `callerUid, calleeUid, callerName, calleeName, status, offer, answer, createdAt` |
 | `calls/{id}/callerCandidates`, `/calleeCandidates` | participants | participants | ICE candidate JSON |
 
-**Why `users` is private and `channels` is public:** profiles hold email, phone and plan. Channel pages only need the name, description and avatar, so those are copied to `channels/{uid}`. The copy is (re)written when a user edits their channel and on every successful OTP verification (which also migrates older accounts).
+**Why `users` is private and `channels` is public:** profiles hold email and plan. Channel pages only need the name, description and avatar, so those are copied to `channels/{uid}`. The copy is written when the account is first created and rewritten whenever the user edits their channel.
 
 **Composite indexes** (`firestore.indexes.json`): comments by `videoid` + `commentedon desc`; payments by `uid` + `createdAt desc`; calls by `calleeUid` + `status` + `createdAt desc`.
 
@@ -212,23 +207,21 @@ The API routes use the **Firebase Admin SDK**, which bypasses the security rules
 ### Layers
 
 1. **Firebase ID tokens:** every protected API route verifies the caller's token server-side.
-2. **OTP session binding:** after a successful OTP, the server writes `sessions/{uid}.authTime = <token's auth_time>`. `auth_time` is the moment of the Google sign-in and stays the same while that sign-in's tokens refresh. A **new** Google sign-in has a new `auth_time`, so it needs a new OTP. Both `withAuth` and the Firestore rules (`otpOk()`) compare these values.
-3. **Firestore rules** (`firestore.rules`):
+2. **Firestore rules** (`firestore.rules`):
    - public read: `videos`, `comments`, `channels`
-   - owner-only read: `users/{uid}` and its subcollections, `payments` (own), `sessions` (own)
-   - no browser writes at all: `comments`, `payments`, `orders`, `otps`, `sessions`, `downloads`, `downloadDays`, `friends`
-   - `users/{uid}` updates may only touch `name, channelname, description, image`, after OTP
+   - owner-only read: `users/{uid}` and its subcollections, `payments` (own)
+   - no browser writes at all: `comments`, `payments`, `orders`, `downloads`, `downloadDays`, `friends`
+   - `users/{uid}` updates may only touch `name, channelname, description, image`
    - `videos`: create only as yourself with `likes == 0 && views == 0`; `views` may only go up by exactly 1; `likes` by ±1
    - `calls`: only participants can read/update/delete; you can only create a call to an **accepted friend**; candidates are readable/writable by participants only
-4. **Money comes only from server config:** routes accept a product id, never an amount. `create-order` reads `lib/plans.ts`; fulfilment copies the amount from the stored order; the webhook rejects a captured amount that doesn't match.
-5. **Secrets stay on the server:** only `NEXT_PUBLIC_*` values reach the browser. A build-time scan confirmed the Razorpay secret, SMTP password, Firebase private key and service-account email are absent from the client bundle.
+3. **Money comes only from server config:** routes accept a product id, never an amount. `create-order` reads `lib/plans.ts`; fulfilment copies the amount from the stored order; the webhook rejects a captured amount that doesn't match.
+4. **Secrets stay on the server:** only `NEXT_PUBLIC_*` values reach the browser. A build-time scan confirmed the Razorpay secret, SMTP password, Firebase private key and service-account email are absent from the client bundle.
 
 ### What was checked (Phase 7)
 
-- every route that touches money, limits or other users' data is wrapped in `withAuth` with the OTP check
-- only the five OTP/phone routes allow a pre-OTP token (they are how you complete it)
+- every route that touches money, limits or other users' data is wrapped in `withAuth`
 - `/api/geo` and `/api/translate` are intentionally public; the webhook is authenticated by its HMAC signature
-- 18 rules tests run against the emulator
+- 16 rules tests run against the emulator
 
 ---
 
@@ -249,7 +242,7 @@ The result is `{ city, regionCode, regionName, country, source }`. Region codes 
 
 ### Error handling
 
-- server: `HttpError(status, { error, reason, ... })` for expected failures; `reason` is a stable machine-readable code (`OTP_REQUIRED`, `DAILY_LIMIT`, `SPECIAL_CHARS`, `NOT_AN_UPGRADE`, …)
+- server: `HttpError(status, { error, reason, ... })` for expected failures; `reason` is a stable machine-readable code (`UNAUTHENTICATED`, `DAILY_LIMIT`, `SPECIAL_CHARS`, `NOT_AN_UPGRADE`, …)
 - client: `apiFetch` throws `ApiError` with `.status` and `.reason`, and components branch on the reason (e.g. `DAILY_LIMIT` opens the Premium dialog); other errors become toasts
 
 ### UI events
@@ -262,51 +255,15 @@ Two small window events decouple components:
 
 ## 8. Features in depth
 
-### 8.1 Sign-in and the OTP step
+### 8.1 Sign-in
 
-```mermaid
-sequenceDiagram
-  participant B as Browser
-  participant G as Google / Firebase Auth
-  participant S as API routes
-  participant F as Firestore
-  B->>G: signInWithRedirect (via /__/auth on our domain)
-  G-->>B: signed in (ID token, auth_time)
-  B->>F: read sessions/{uid}
-  alt sessions.authTime == token.auth_time
-    B->>B: user is logged in
-  else
-    B->>B: pendingUser, show OtpGate
-    B->>S: GET /api/otp/status
-    S-->>B: channel = email (south) or sms
-    alt email
-      B->>S: POST /api/otp/send {channel: email}
-      S->>F: otps/{uid} = hash, expiry, attempts, authTime
-      S-->>B: code emailed
-      B->>S: POST /api/otp/verify {code}
-    else sms
-      B->>S: POST /api/profile/phone (first time only)
-      B->>S: POST /api/otp/send {channel: sms}  (rate limit only)
-      B->>G: signInWithPhoneNumber on a separate in-memory auth instance
-      G-->>B: SMS code → confirm → phone ID token
-      B->>S: POST /api/otp/verify-phone {phoneIdToken}
-    end
-    S->>F: sessions/{uid}.authTime = auth_time; publish channels/{uid}
-    B->>B: completeOtp() → logged in
-  end
-```
+Sign-in is plain **Google sign-in** with no second step: no OTP, phone number or email code. Once Firebase reports a signed-in user, `AuthContext` loads (or creates) their profile and they're logged in. A new account also gets its public `channels/{uid}` card at this point.
 
-Details:
-
-- **Channel choice is made by the server** from its own geo lookup, so a client can't pick the easier channel. `send` and `verify-phone` reject the wrong channel with `WRONG_CHANNEL`.
-- **Email codes:** 6 digits from `crypto.randomInt`; only `sha256(salt:code)` is stored; 5-minute expiry; 5 attempts (a failed attempt is committed before the error is returned, so it can't be retried for free); single use; bound to the sign-in's `auth_time`.
-- **Rate limit:** 1 send per 30 s and 5 per rolling hour (`checkSendAllowed`), with a Resend countdown in the dialog.
-- **SMS via Firebase Phone Auth:** it runs on a second Firebase auth instance with in-memory persistence so the Google session isn't replaced. The server accepts the resulting phone token only if its sign-in provider is `phone`, its number equals `users/{uid}.phone`, and it is less than 10 minutes old. The throwaway phone-only account is then deleted. `linkWithPhoneNumber` was deliberately **not** used: once a number is linked, its claim stays on every future token, so later sign-ins could pass without a fresh SMS.
-- **Mobile number:** a one-time "Add your mobile number" step (+91, 10 digits starting 6–9). It can't be changed from the OTP dialog, so someone with only the Google password can't redirect the codes.
+- **Server checks:** `withAuth` only verifies the Firebase ID token. The Firestore rules only require `request.auth` (plus the usual ownership checks).
 - **Redirect sign-in on a custom domain:** browsers partition third-party storage, which breaks `signInWithRedirect` when the auth domain differs from the site. `next.config.ts` rewrites `/__/auth/*` to `yourtube-6351d.firebaseapp.com`, and production sets `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=yourtube-nu.vercel.app`.
 - **Sign-in errors** (e.g. `auth/unauthorized-domain`) are shown as toasts with the fix.
 
-Files: `lib/AuthContext.tsx`, `components/OtpGate.tsx`, `pages/api/otp/*`, `pages/api/profile/phone.ts`, `lib/server/otp.ts`, `lib/otpRules.ts`, `lib/firebase.js` (`getOtpAuth`).
+Files: `lib/AuthContext.tsx`, `lib/firebase.js`, `lib/server/withAuth.ts`.
 
 ### 8.2 Theme by time and location
 
@@ -440,7 +397,7 @@ sequenceDiagram
 ### 8.9 Channels, uploads, search and lists
 
 - **Channel:** created from the sidebar or account menu; stored on the private profile and published to `channels/{uid}`. The owner's channel page shows the uploader and a link to their downloads.
-- **Upload:** directly from the browser to Cloudinary with the unsigned preset (with a progress bar), then a `videos` document is created (allowed only after OTP, only as yourself).
+- **Upload:** directly from the browser to Cloudinary with the unsigned preset (with a progress bar), then a `videos` document is created (signed-in users only, only as yourself).
 - **Search:** filters the videos by title or channel name (case-insensitive). Firestore has no substring search, and the catalogue is small, so it filters in the browser.
 - **History, Liked videos, Watch later:** one shared `VideoList` component with per-page loaders.
 - **Home:** video cards with real durations; an empty state when there are no videos.
@@ -450,30 +407,25 @@ sequenceDiagram
 
 ## 9. API reference
 
-All request and response bodies are JSON. "Auth" means `Authorization: Bearer <Firebase ID token>`; "OTP" means the token's sign-in must also have passed the OTP step (otherwise `403 { reason: "OTP_REQUIRED" }`).
+All request and response bodies are JSON. "Auth" means `Authorization: Bearer <Firebase ID token>` (otherwise `401 { reason: "UNAUTHENTICATED" }`).
 
 | Route | Method | Guard | Request | Success response | Notable errors |
 |---|---|---|---|---|---|
 | `/api/geo` | GET | public | — | `{ city, regionCode, regionName, country, source }` | — |
 | `/api/translate` | POST | public | `{ text, target }` | `{ translatedText, detectedSource }` | 400 unsupported language, 502 provider down |
-| `/api/comments` | POST | Auth + OTP | `{ videoId, text }` | 201 `{ comment }` | 400 `SPECIAL_CHARS` / `EMPTY` / `TOO_LONG`, 404 video |
-| `/api/comments/[id]` | PATCH | Auth + OTP | `{ text }` | `{ comment }` | 403 not owner, 400 text rule |
-| `/api/comments/[id]` | DELETE | Auth + OTP | — | `{ deleted: true }` | 403 not owner |
-| `/api/comments/[id]/react` | POST | Auth + OTP | `{ type: "like" \| "dislike" }` | `{ removed: false, likes, dislikes }` or `{ removed: true }` | 400 own comment, 404 `GONE` |
-| `/api/downloads` | GET | Auth + OTP | — | `{ downloads[], quota }` | — |
-| `/api/downloads` | POST | Auth + OTP | `{ videoId }` | `{ url, quota }` | 402 `DAILY_LIMIT`, 404 video |
-| `/api/payments/create-order` | POST | Auth + OTP | `{ product: premium\|bronze\|silver\|gold }` | `{ orderId, amount, currency, keyId, productName, prefill }` | 400 unknown product, 409 already Premium / `NOT_AN_UPGRADE` |
-| `/api/payments/verify` | POST | Auth + OTP | `{ razorpay_order_id, razorpay_payment_id, razorpay_signature }` | `{ ok, alreadyProcessed, product, invoiceNumber, emailStatus }` | 400 `BAD_SIGNATURE`, 403 someone else's order |
+| `/api/comments` | POST | Auth | `{ videoId, text }` | 201 `{ comment }` | 400 `SPECIAL_CHARS` / `EMPTY` / `TOO_LONG`, 404 video |
+| `/api/comments/[id]` | PATCH | Auth | `{ text }` | `{ comment }` | 403 not owner, 400 text rule |
+| `/api/comments/[id]` | DELETE | Auth | — | `{ deleted: true }` | 403 not owner |
+| `/api/comments/[id]/react` | POST | Auth | `{ type: "like" \| "dislike" }` | `{ removed: false, likes, dislikes }` or `{ removed: true }` | 400 own comment, 404 `GONE` |
+| `/api/downloads` | GET | Auth | — | `{ downloads[], quota }` | — |
+| `/api/downloads` | POST | Auth | `{ videoId }` | `{ url, quota }` | 402 `DAILY_LIMIT`, 404 video |
+| `/api/payments/create-order` | POST | Auth | `{ product: premium\|bronze\|silver\|gold }` | `{ orderId, amount, currency, keyId, productName, prefill }` | 400 unknown product, 409 already Premium / `NOT_AN_UPGRADE` |
+| `/api/payments/verify` | POST | Auth | `{ razorpay_order_id, razorpay_payment_id, razorpay_signature }` | `{ ok, alreadyProcessed, product, invoiceNumber, emailStatus }` | 400 `BAD_SIGNATURE`, 403 someone else's order |
 | `/api/payments/webhook` | POST | HMAC signature | Razorpay event (raw body) | `{ ok, alreadyProcessed }` or `{ ignored }` | 400 bad signature, 500 temporary (Razorpay retries) |
-| `/api/payments/resend-invoice` | POST | Auth + OTP | `{ paymentId }` | `{ emailStatus: "sent" }` | 404, 409 `ALREADY_SENT`, 502 send failed |
-| `/api/otp/status` | GET | Auth (pre-OTP) | — | `{ verified, channel, region, city, emailMasked, phone, phoneMasked }` | — |
-| `/api/otp/send` | POST | Auth (pre-OTP) | `{ channel }` | `{ sent, channel, expiresInMs }` | 400 `WRONG_CHANNEL` / `PHONE_REQUIRED`, 429 `COOLDOWN` / `HOURLY_LIMIT`, 502 `SEND_FAILED` |
-| `/api/otp/verify` | POST | Auth (pre-OTP) | `{ code }` | `{ verified: true }` | 400 `WRONG_CODE` (+ attemptsLeft) / `EXPIRED` / `NO_CODE`, 429 `TOO_MANY_ATTEMPTS` |
-| `/api/otp/verify-phone` | POST | Auth (pre-OTP) | `{ phoneIdToken }` | `{ verified: true }` | 400 `WRONG_CHANNEL` / `PHONE_MISMATCH` / `STALE_PHONE_TOKEN`, 401 `BAD_PHONE_TOKEN` |
-| `/api/profile/phone` | POST | Auth (pre-OTP) | `{ phone }` | `{ phone }` (normalised `+91…`) | 400 `BAD_PHONE`, 409 `PHONE_EXISTS` |
-| `/api/friends/request` | POST | Auth + OTP | `{ email }` | `{ uid, status: outgoing\|accepted }` | 404 no such account, 400 yourself, 409 already friends / sent |
-| `/api/friends/respond` | POST | Auth + OTP | `{ uid, accept }` | `{ status: accepted\|declined }` | 404 no pending request |
-| `/api/friends/[uid]` | DELETE | Auth + OTP | — | `{ removed: true }` | — |
+| `/api/payments/resend-invoice` | POST | Auth | `{ paymentId }` | `{ emailStatus: "sent" }` | 404, 409 `ALREADY_SENT`, 502 send failed |
+| `/api/friends/request` | POST | Auth | `{ email }` | `{ uid, status: outgoing\|accepted }` | 404 no such account, 400 yourself, 409 already friends / sent |
+| `/api/friends/respond` | POST | Auth | `{ uid, accept }` | `{ status: accepted\|declined }` | 404 no pending request |
+| `/api/friends/[uid]` | DELETE | Auth | — | `{ removed: true }` | — |
 
 Common to all: 405 for the wrong method; 401 for a missing or invalid token; 500 with a generic message for unexpected errors (details are logged on the server).
 
@@ -485,13 +437,13 @@ Enabled only when `NEXT_PUBLIC_ENABLE_TEST_OVERRIDES=true` (it is **on** in prod
 
 | Parameter | Effect |
 |---|---|
-| `?testRegion=KL` | Pretend to be in that Indian state: theme, OTP channel, comment city. The browser sends it to the server as the `x-test-region` header. |
+| `?testRegion=KL` | Pretend to be in that Indian state: theme and comment city. The browser sends it to the server as the `x-test-region` header. |
 | `?testHour=11` | Pretend the IST hour is 11: theme only. |
 | `?testWatchLimit=20` | Shorten a limited plan's watch budget to 20 s (5–3600) to demo the lock on short clips. Never lifts Gold's unlimited. |
 
-Example: `https://yourtube-nu.vercel.app/?testRegion=KL&testHour=11` gives the light theme and an email OTP.
+Example: `https://yourtube-nu.vercel.app/?testRegion=KL&testHour=11` gives the light theme.
 
-> ⚠️ While the flag is on, anyone can fake their region, including choosing email OTP instead of SMS. Turn it off in Vercel when you're not demoing.
+> ⚠️ While the flag is on, anyone can fake their region. Turn it off in Vercel when you're not demoing.
 
 ---
 
@@ -499,17 +451,16 @@ Example: `https://yourtube-nu.vercel.app/?testRegion=KL&testHour=11` gives the l
 
 | Command (in `yourtube/`) | What it runs | Needs |
 |---|---|---|
-| `npm test` | **176 unit tests** (Vitest) for all the pure modules in §4 | nothing |
-| `npm run test:rules` | **18 Firestore rules tests** | Java (Firestore emulator) |
-| `npm run test:api` | **38 API tests** over HTTP: `next dev` against the Auth + Firestore emulators, real Razorpay **test** orders, captured (not sent) emails | Java, Razorpay test keys in `.env.local` |
+| `npm test` | **159 unit tests** (Vitest) for all the pure modules in §4 | nothing |
+| `npm run test:rules` | **16 Firestore rules tests** | Java (Firestore emulator) |
+| `npm run test:api` | **26 API tests** over HTTP: `next dev` against the Auth + Firestore emulators, real Razorpay **test** orders, captured (not sent) emails | Java, Razorpay test keys in `.env.local` |
 | `npm run test:e2e` | **5 two-browser tests**: friend request/accept + online, ring/accept/video both ways, recording indicator + valid `.webm`, hang-up cleanup, decline, not-a-friend rule, screen share | Java, Playwright Chromium (fake camera) |
 | `npm run test:smoke` | **8 smoke checks** (desktop + phone) on a local production build, or a deployment with `SMOKE_URL=https://…` | at least one video in Firestore |
 | `npm run lint`, `npm run typecheck` | ESLint (Next + TypeScript rules), `tsc --noEmit` | — |
 
 How the harder parts are tested:
 
-- **Emails in tests** are written to disk (`MAIL_CAPTURE_DIR`) so tests can read the OTP code or open the PDF.
-- **SMS in tests** uses the Auth emulator's phone sign-in, which exposes the code through its REST API.
+- **Emails in tests** are written to disk (`MAIL_CAPTURE_DIR`) so tests can open the invoice PDF.
 - **The browser app against the emulators:** building with `NEXT_PUBLIC_USE_EMULATORS=true` connects the client SDK to the emulators and adds a test-only email/password sign-in hook. The flag is pinned at build time in `next.config.ts`, so normal builds compile this code out completely.
 - **Payments** use real Razorpay test orders; the payment step is simulated by signing a fake payment id with the test secret, which exercises the same verification code.
 
@@ -548,8 +499,6 @@ External accounts used: Firebase project `yourtube-6351d` (Spark plan), Cloudina
 - One-time console setup:
   - Authentication → Settings → **Authorized domains**: `yourtube-nu.vercel.app` (done)
   - Google Cloud → Credentials → Web OAuth client: JavaScript origin `https://yourtube-nu.vercel.app` and redirect URI `https://yourtube-nu.vercel.app/__/auth/handler` (done)
-  - Authentication → Sign-in method → **Phone** enabled with test number `+91 98765 43210` → `123456` (done)
-  - Authentication → Settings → **SMS region policy**: add **India** (not done yet; until then every SMS fails)
 
 ### Razorpay
 
@@ -572,9 +521,6 @@ External accounts used: Firebase project `yourtube-6351d` (Spark plan), Cloudina
 |---|---|---|
 | Clicking **Sign in** shows "Sign-in isn't enabled for … yet" | `auth/unauthorized-domain` | Add the domain to Firebase → Authentication → Settings → Authorized domains |
 | Google shows `redirect_uri_mismatch` | The OAuth client doesn't list `https://<domain>/__/auth/handler` | Add it in Google Cloud → Credentials |
-| OTP dialog: "SMS sign-in isn't enabled…" | Phone provider off, **or** the SMS region policy blocks India (`SMS unable to be sent until this region enabled`) | Enable Phone; add India to the SMS region policy; use a test number |
-| No email code arrives | You're not in a southern state (so the channel is SMS), wrong inbox, or Gmail SMTP failed | Use `?testRegion=KL`; check the inbox of the account you signed in with, including Spam; check Vercel logs |
-| "Add your mobile number" doesn't appear | A number is already saved on the account | It only appears the first time; clear `users/{uid}.phone` with the Admin SDK to re-enter |
 | Protected APIs return 500 on Vercel | Check logs; the known cause was `firebase-admin` 14 (`ERR_REQUIRE_ESM`) | Keep `firebase-admin` on 13.x |
 | Home page stuck on "Loading…" | A browser extension blocking Firestore's connection | Try an Incognito window |
 | Video won't play; Cloudinary returns 404 `Resource not found` | The file was deleted from Cloudinary but its Firestore document remains | Restore it from Cloudinary's trash or delete the `videos` document |
@@ -590,7 +536,6 @@ External accounts used: Firebase project `yourtube-6351d` (Spark plan), Cloudina
 - **Saving recordings:** Chrome/Edge show a save dialog; Firefox/Safari download to the default folder.
 - **Recording in the background:** the worker timer keeps drawing, but browsers still throttle hidden tabs somewhat, so the frame rate may dip.
 - **Calls** need both people to have the site open; there are no push notifications.
-- **Real SMS** needs Firebase's Blaze plan; test numbers are free.
 - **Watch limit is per viewing:** reloading the page starts a new budget, as specified ("each time a user watches a video").
 - **Download filenames** keep only Latin letters and digits; an all-Hindi title downloads as `video.mp4`.
 - **Search** filters in the browser, which is fine for a small catalogue but won't scale.
@@ -608,6 +553,7 @@ External accounts used: Firebase project `yourtube-6351d` (Spark plan), Cloudina
 | PR #1 | Migrated to Firebase (Auth + Firestore) and Cloudinary |
 | July 2026 | A first attempt at the six features on the `piush` branch; never merged (it trusted the browser for OTP, quotas and invoices) |
 | PR #2 (Sept 2026) | Rebuilt the features on `feature/internship-tasks` in phases, with server enforcement and tests; deployed to Vercel; merged into `main` |
+| Oct 2026 | Removed the OTP sign-in step (email codes, SMS via Phone Auth, the mobile-number step); sign-in is plain Google again |
 
 Phases of PR #2:
 

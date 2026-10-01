@@ -8,14 +8,6 @@ const INVOICE_ROUTES = ["/api/payments/verify", "/api/payments/webhook", "/api/p
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "res.cloudinary.com",
-      },
-    ],
-  },
   // pdfkit reads its AFM data from its own package directory at runtime,
   // which breaks if it's bundled.
   serverExternalPackages: ["pdfkit"],

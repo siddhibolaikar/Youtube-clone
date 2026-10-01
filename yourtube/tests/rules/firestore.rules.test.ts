@@ -33,7 +33,6 @@ beforeEach(async () => {
       image: "",
       plan: "free",
     });
-    await setDoc(doc(db, "sessions/alice"), { authTime: AUTH_TIME });
     await setDoc(doc(db, "videos/v1"), { uploader: "bob", videotitle: "t", likes: 0, views: 0 });
     await setDoc(doc(db, "comments/c1"), { videoid: "v1", userid: "bob", commentbody: "hi", likes: [], dislikes: [] });
     await setDoc(doc(db, "payments/p1"), { uid: "alice", amount: 9900 });
@@ -42,11 +41,7 @@ beforeEach(async () => {
   });
 });
 
-/** Alice, signed in and past the OTP step for this sign-in. */
 const alice = () => env.authenticatedContext("alice", { auth_time: AUTH_TIME, email: "alice@example.com" }).firestore();
-/** Alice from a newer Google sign-in that has not done the OTP yet. */
-const aliceNoOtp = () =>
-  env.authenticatedContext("alice", { auth_time: AUTH_TIME + 60, email: "alice@example.com" }).firestore();
 const mallory = () => env.authenticatedContext("mallory", { auth_time: AUTH_TIME }).firestore();
 const anon = () => env.unauthenticatedContext().firestore();
 
@@ -61,15 +56,14 @@ describe("users", () => {
     ["plan", "gold"],
     ["planExpiry", 9999999999],
     ["isPremium", true],
-    ["phone", "+919999999999"],
     ["downloadsToday", 0],
   ])("owner cannot write server-only field %s", async (field, value) => {
     await assertFails(updateDoc(doc(alice(), "users/alice"), { [field]: value }));
   });
 
-  it("owner can edit channel fields after OTP, not before", async () => {
+  it("owner can edit channel fields", async () => {
     await assertSucceeds(updateDoc(doc(alice(), "users/alice"), { channelname: "New" }));
-    await assertFails(updateDoc(doc(aliceNoOtp(), "users/alice"), { channelname: "New" }));
+    await assertFails(updateDoc(doc(mallory(), "users/alice"), { channelname: "New" }));
   });
 
   it("new profile cannot smuggle in a plan", async () => {
@@ -106,12 +100,6 @@ describe("server-only collections", () => {
     await assertFails(getDoc(doc(mallory(), "payments/p1")));
     await assertFails(setDoc(doc(alice(), "payments/p2"), { uid: "alice", amount: 1 }));
   });
-
-  it("otps are invisible; sessions are read-only to the owner", async () => {
-    await assertFails(getDoc(doc(alice(), "otps/alice")));
-    await assertSucceeds(getDoc(doc(alice(), "sessions/alice")));
-    await assertFails(setDoc(doc(aliceNoOtp(), "sessions/alice"), { authTime: AUTH_TIME + 60 }));
-  });
 });
 
 describe("videos", () => {
@@ -121,18 +109,18 @@ describe("videos", () => {
     await assertFails(updateDoc(doc(anon(), "videos/v1"), { videotitle: "pwned" }));
   });
 
-  it("uploads require OTP and must be your own", async () => {
+  it("uploads require sign-in and must be your own", async () => {
     const v = { uploader: "alice", videotitle: "x", likes: 0, views: 0 };
     await assertSucceeds(addDoc(collection(alice(), "videos"), v));
-    await assertFails(addDoc(collection(aliceNoOtp(), "videos"), v));
+    await assertFails(addDoc(collection(anon(), "videos"), v));
     await assertFails(addDoc(collection(alice(), "videos"), { ...v, uploader: "bob" }));
   });
 });
 
 describe("per-user lists", () => {
-  it("likes need OTP and your own viewer id", async () => {
+  it("likes need sign-in and your own viewer id", async () => {
     await assertSucceeds(addDoc(collection(alice(), "likes"), { viewer: "alice", videoid: "v1" }));
-    await assertFails(addDoc(collection(aliceNoOtp(), "likes"), { viewer: "alice", videoid: "v1" }));
+    await assertFails(addDoc(collection(anon(), "likes"), { viewer: "alice", videoid: "v1" }));
     await assertFails(addDoc(collection(alice(), "likes"), { viewer: "bob", videoid: "v1" }));
   });
 });

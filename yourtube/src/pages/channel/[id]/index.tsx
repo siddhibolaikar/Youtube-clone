@@ -1,7 +1,6 @@
 import ChannelHeader from "@/components/ChannelHeader";
 import Channeltabs from "@/components/Channeltabs";
 import ChannelVideos from "@/components/ChannelVideos";
-import VideoUploader from "@/components/VideoUploader";
 import { useUser } from "@/lib/AuthContext";
 import { getVideosByUploader } from "@/lib/videoService";
 import { getChannelById } from "@/lib/userService";
@@ -37,8 +36,8 @@ const ChannelPage = () => {
   }, [id]);
 
   const isOwner = !!user && user.uid === id;
-  // The public channel card is created on first OTP-verified login; until
-  // then the owner still sees their own channel from their profile.
+  // Accounts from before the channel card was written at sign-up may not have
+  // one yet; the owner still sees their own channel from their profile.
   const shown: Channel | null =
     channel ??
     (isOwner && user.channelname
@@ -65,11 +64,6 @@ const ChannelPage = () => {
                 <Download className="w-4 h-4" /> Your downloads
               </Link>
             </Button>
-          </div>
-        )}
-        {isOwner && (
-          <div className="px-4 pb-8">
-            <VideoUploader channelId={user.uid} channelName={shown.channelname} />
           </div>
         )}
         <div className="px-4 pb-8">

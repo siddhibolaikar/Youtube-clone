@@ -12,9 +12,9 @@ import { istHourNow, msToNextMinute, themeFor } from "@/lib/theme";
  */
 export default function ThemeController() {
   const { setTheme } = useTheme();
-  const { user, pendingUser } = useUser();
+  const { user } = useUser();
   const [geo, setGeo] = useState<ClientGeo | null>(null);
-  const signedInUid = user?.uid ?? pendingUser?.uid ?? null;
+  const signedInUid = user?.uid ?? null;
 
   useEffect(() => {
     let cancelled = false;

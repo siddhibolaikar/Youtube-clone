@@ -16,7 +16,7 @@ import { Button } from "./ui/button";
 import { TimeRemainingChip, WatchLimitOverlay } from "./WatchLimitOverlay";
 
 interface VideoPlayerProps {
-  video: Pick<Video, "id" | "videotitle" | "videoUrl">;
+  video: Pick<Video, "id" | "videotitle" | "videoUrl" | "poster">;
   /** The RelatedVideos list; its first entry is "next video". */
   relatedVideos?: Pick<Video, "id" | "videotitle">[];
 }
@@ -212,7 +212,7 @@ export default function VideoPlayer({ video, relatedVideos = [] }: VideoPlayerPr
         onMouseMove={() => !controlsVisible && setControlsVisible(true)}
         data-testid="video-player"
       >
-        <video ref={videoRef} key={video.id} src={video.videoUrl} className="w-full h-full" playsInline preload="metadata">
+        <video ref={videoRef} key={video.id} src={video.videoUrl} poster={video.poster} className="w-full h-full" playsInline preload="metadata">
           Your browser does not support the video tag.
         </video>
 

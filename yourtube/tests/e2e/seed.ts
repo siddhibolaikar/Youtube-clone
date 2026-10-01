@@ -1,4 +1,4 @@
-// Seeds emulator users that are signed-in, OTP-verified and friends.
+// Seeds emulator users that are signed-in and friends.
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
@@ -25,11 +25,6 @@ export async function seedUser(name: string): Promise<SeedUser> {
   const { localId } = (await r.json()) as { localId: string };
   await db.doc(`users/${localId}`).set({ email, name, channelname: name, description: "", image: "" });
   return { uid: localId, email, password, name };
-}
-
-/** The OTP session must match the auth_time of the browser's own sign-in, so seed it after signing in. */
-export async function markOtpForLatestSignIn(user: SeedUser, authTime: number) {
-  await db.doc(`sessions/${user.uid}`).set({ authTime, channel: "email", verifiedAt: new Date() });
 }
 
 export async function makeFriends(a: SeedUser, b: SeedUser) {

@@ -1,25 +1,22 @@
 import { readFileSync } from "fs";
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { db, makeFriends, markOtpForLatestSignIn, seedUser, type SeedUser } from "./seed";
+import { db, makeFriends, seedUser, type SeedUser } from "./seed";
 
 declare global {
   interface Window {
-    __yourtubeTest: { signIn(email: string, password: string): Promise<{ user: { getIdTokenResult(): Promise<{ claims: Record<string, unknown> }> } }> };
+    __yourtubeTest: { signIn(email: string, password: string): Promise<unknown> };
   }
 }
 
-/** A browser window signed in as `user`, past the OTP step. */
+/** A browser window signed in as `user`. */
 async function signedIn(browser: Browser, user: SeedUser): Promise<Page> {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
   await page.goto("/?testRegion=MH");
   await page.waitForFunction(() => !!window.__yourtubeTest);
-  const authTime = await page.evaluate(async ([email, password]) => {
-    const cred = await window.__yourtubeTest.signIn(email, password);
-    return Number((await cred.user.getIdTokenResult()).claims.auth_time);
+  await page.evaluate(async ([email, password]) => {
+    await window.__yourtubeTest.signIn(email, password);
   }, [user.email, user.password]);
-  await markOtpForLatestSignIn(user, authTime);
-  await page.reload();
   await expect(page.getByRole("link", { name: /Friends & calls/ })).toBeVisible({ timeout: 30_000 });
   return page;
 }

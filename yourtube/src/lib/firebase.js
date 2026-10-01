@@ -2,8 +2,6 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import {
   getAuth,
   GoogleAuthProvider,
-  initializeAuth,
-  inMemoryPersistence,
   connectAuthEmulator,
   signInWithEmailAndPassword,
 } from "firebase/auth";
@@ -32,23 +30,6 @@ if (process.env.NEXT_PUBLIC_USE_EMULATORS === "true" && typeof window !== "undef
   connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
   window.__yourtubeTest = { signIn: (email, password) => signInWithEmailAndPassword(auth, email, password) };
-}
-
-let otpAuth = null;
-
-/**
- * A second, in-memory auth instance used only to receive the SMS code via
- * Firebase Phone Auth, so the Google session in `auth` is never replaced.
- */
-export function getOtpAuth() {
-  if (otpAuth) return otpAuth;
-  const otpApp = getApps().find((a) => a.name === "otp") ?? initializeApp(firebaseConfig, "otp");
-  try {
-    otpAuth = initializeAuth(otpApp, { persistence: inMemoryPersistence });
-  } catch {
-    otpAuth = getAuth(otpApp);
-  }
-  return otpAuth;
 }
 
 export { auth, provider, db, storage, getApp };

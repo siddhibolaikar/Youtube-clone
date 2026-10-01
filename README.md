@@ -13,7 +13,7 @@ A YouTube-style video app built with **Next.js 15 (Pages Router), React 19, Type
 | **Plans** | Free 5 min · Bronze ₹10 7 min · Silver ₹50 10 min · Gold ₹100 unlimited watch time **per video** · upgrade-only `/plans` page · player locks with an upgrade overlay at the limit |
 | **Invoices** | Email with HTML + **PDF invoice** after every purchase (invoice number, IST time, plan, amount, Razorpay IDs, "Test mode") · "Resend invoice" if the email failed |
 | **Theme** | **Light only 10:00–12:00 IST in Tamil Nadu, Kerala, Karnataka, Andhra Pradesh, Telangana**; dark everywhere else · re-checked every minute |
-| **OTP sign-in step** | After Google sign-in: code by **email** in the 5 southern states, by **SMS** (Firebase Phone Auth) elsewhere · 5-minute expiry, 5 attempts, 1 send per 30 s / 5 per hour · nothing protected works until it passes |
+| **Sign-in** | Plain **Google sign-in**: no OTP, phone number or extra verification step |
 | **Player** | Custom controls (play, seek, volume, speed, fullscreen) · tap gestures: sides ×2 = ∓10 s, centre ×1 = play/pause, centre ×3 = next video, left ×3 = comments, right ×3 = close · keyboard Space/K, J/L, F |
 | **Calls** | Friends by email (request → accept) with online status · peer-to-peer **video calls** (WebRTC, Firestore signalling, TURN) · **screen share** ("pick the YouTube tab to watch together") · **record** the call to your device, with a REC indicator for both people |
 
@@ -28,12 +28,12 @@ flowchart LR
   end
 
   subgraph Vercel["Vercel (Next.js API routes)"]
-    AUTH[withAuth<br/>ID token + OTP session]
-    API[/api/comments · downloads · payments<br/>otp · friends · translate · geo/]
+    AUTH[withAuth<br/>Firebase ID token]
+    API[/api/comments · downloads · payments<br/>friends · translate · geo/]
   end
 
   subgraph Firebase
-    FA[Firebase Auth<br/>Google + Phone]
+    FA[Firebase Auth<br/>Google]
     FS[(Firestore<br/>+ security rules)]
   end
 
@@ -43,7 +43,7 @@ flowchart LR
   API -- Admin SDK --> FS
   API -- orders / verify --> RZP[Razorpay<br/>test mode]
   RZP -- webhook payment.captured --> API
-  API -- invoices, OTP --> SMTP[Gmail SMTP]
+  API -- invoices --> SMTP[Gmail SMTP]
   API -- translate --> MM[MyMemory]
   API -- geo fallback --> IPAPI[ipapi.co]
   UI -- upload / stream --> CL[Cloudinary]
@@ -51,7 +51,7 @@ flowchart LR
   RTC <-- media, P2P or via TURN --> RTC2[Friend's browser]
 ```
 
-**Anything that controls money or limits runs on the server.** That covers plans, Premium, download quota, dislike removal, the special-character rule, payment verification and the OTP. `firestore.rules` stops browsers writing those fields directly. Prices come only from [`yourtube/src/lib/plans.ts`](yourtube/src/lib/plans.ts); the browser just sends a product id.
+**Anything that controls money or limits runs on the server.** That covers plans, Premium, download quota, dislike removal, the special-character rule, and payment verification. `firestore.rules` stops browsers writing those fields directly. Prices come only from [`yourtube/src/lib/plans.ts`](yourtube/src/lib/plans.ts); the browser just sends a product id.
 
 **Location** comes from Vercel's `x-vercel-ip-*` headers, with `ipapi.co` as the fallback for local dev. **Every time rule uses IST** (`Asia/Kolkata`), never the browser's time zone.
 
@@ -99,14 +99,14 @@ npm run test:smoke    # Playwright smoke test (SMOKE_URL=https://… to run agai
 npm run lint && npm run typecheck
 ```
 
+### Demo videos
+
+The video catalogue is hardcoded in [`yourtube/src/lib/sampleVideos.ts`](yourtube/src/lib/sampleVideos.ts) and the files are served from `yourtube/public/videos/` (no Cloudinary, no uploads). Four are on the **Siddhi Bolaikar** channel (`/channel/sample-siddhi-bolaikar`): the Sintel trailer (Blender Foundation, CC-BY) plus three short clips. Firestore only holds each video's views/likes, which likes and comments need; `npm run seed:samples` (in `yourtube/`) syncs it with the list and keeps the counts.
+
 ### Test payments (Razorpay test mode, no real money)
 
 - **Card:** `4111 1111 1111 1111`, any future expiry, any CVV (use OTP `1111` if asked)
 - **UPI:** `success@razorpay`
-
-### Test phone numbers (SMS OTP without paying for SMS)
-
-Firebase Console → Authentication → Sign-in method → **Phone** → *Phone numbers for testing*, e.g. `+91 98765 43210` with code `123456`. Real SMS to real numbers needs the Firebase **Blaze** plan.
 
 ### Geo/time test overrides
 
@@ -114,11 +114,11 @@ When `NEXT_PUBLIC_ENABLE_TEST_OVERRIDES=true`, you can fake location and time wi
 
 | Parameter | Effect | Example |
 |---|---|---|
-| `testRegion` | Pretend to be in an Indian state (2-letter code). Affects theme, OTP channel and comment city. | `?testRegion=KL` |
+| `testRegion` | Pretend to be in an Indian state (2-letter code). Affects theme and comment city. | `?testRegion=KL` |
 | `testHour` | Pretend the IST hour is this (0–23). Affects the theme. | `?testHour=11` |
 | `testWatchLimit` | Shorten a limited plan's watch limit to N seconds, to demo the lock on short clips. | `?testWatchLimit=20` |
 
-Demo South India from anywhere: `https://yourtube-nu.vercel.app/?testRegion=KL&testHour=11` gives the light theme and an email OTP. **Anyone can use these while the flag is on**, so turn it off when you're not demoing.
+Demo South India from anywhere: `https://yourtube-nu.vercel.app/?testRegion=KL&testHour=11` gives the light theme. **Anyone can use these while the flag is on**, so turn it off when you're not demoing.
 
 ## Known browser limitations
 
@@ -127,7 +127,6 @@ Demo South India from anywhere: `https://yourtube-nu.vercel.app/?testRegion=KL&t
 - **Saving recordings:** Chrome/Edge ask where to save (`showSaveFilePicker`); Firefox/Safari download to the default folder instead.
 - **Recording while on another tab:** the canvas is drawn from a worker timer so it keeps running when this tab is in the background. Browsers still throttle hidden tabs somewhat, so the frame rate may dip.
 - **Calls** need both people to have the site open (there are no push notifications). Across mobile networks they rely on the TURN relay.
-- **SMS OTP to real numbers** needs the Firebase Blaze plan; test numbers work on the free plan.
 
 ## Project layout
 
@@ -135,8 +134,8 @@ Demo South India from anywhere: `https://yourtube-nu.vercel.app/?testRegion=KL&t
 firestore.rules, firestore.indexes.json, firebase.json   Firestore config (repo root)
 yourtube/
   src/pages/            pages + API routes (src/pages/api/*)
-  src/components/       UI (player, comments, OTP gate, calls, …)
+  src/components/       UI (player, comments, calls, …)
   src/lib/              client services and pure logic (plans, gestures, theme, IST, validation…)
-  src/lib/server/       server-only helpers (Admin SDK, withAuth, geo, payments, mailer, invoice, OTP)
+  src/lib/server/       server-only helpers (Admin SDK, withAuth, geo, payments, mailer, invoice)
   tests/                rules, API, e2e (emulators) and smoke (Playwright) tests
 ```
